@@ -114,7 +114,7 @@ Create `leaves/templates/leaves/base.html` - this will be the parent template:
     <!-- Navigation Bar -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container-fluid">
-            <a class="navbar-brand" href="{% url 'leaves:home' %}">
+            <a class="navbar-brand" href="{% url 'leaves:dashboard' %}">
                 <i class="bi bi-calendar-check"></i> Leave Management
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -122,26 +122,48 @@ Create `leaves/templates/leaves/base.html` - this will be the parent template:
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'leaves:home' %}">Home</a>
-                    </li>
+                    <ul class="navbar-nav me-auto">
                     {% if user.is_authenticated %}
-                        <li class="nav-item">
-                            <a class="nav-link" href="{% url 'leaves:dashboard' %}">Dashboard</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{% url 'leaves:apply_leave' %}">Apply Leave</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{% url 'leaves:leave_history' %}">My Leaves</a>
-                        </li>
+
                         {% if user.is_staff %}
+                            <!-- ADMIN NAV -->
                             <li class="nav-item">
-                                <a class="nav-link" href="{% url 'leaves:pending_requests' %}">Pending Requests</a>
+                                <a class="nav-link" href="{% url 'leaves:pending_requests' %}">
+                                    Pending Applications
+                                </a>
                             </li>
+
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'leaves:reports' %}">
+                                    Reports & Analytics
+                                </a>
+                            </li>
+
+                        {% else %}
+                            <!-- FACULTY NAV -->
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'leaves:dashboard' %}">
+                                    Dashboard
+                                </a>
+                            </li>
+
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'leaves:apply_leave' %}">
+                                    Apply Leave
+                                </a>
+                            </li>
+
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'leaves:reports' %}">
+                                    Reports
+                                </a>
+                            </li>
+
                         {% endif %}
+
                     {% endif %}
                 </ul>
+                
                 <ul class="navbar-nav">
                     {% if user.is_authenticated %}
                         <li class="nav-item dropdown">
@@ -152,7 +174,14 @@ Create `leaves/templates/leaves/base.html` - this will be the parent template:
                             <ul class="dropdown-menu dropdown-menu-end">
                                 <li><a class="dropdown-item" href="{% url 'leaves:profile' %}">Profile</a></li>
                                 <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item" href="{% url 'logout' %}">Logout</a></li>
+                                <li>
+                                    <form method="POST" action="{% url 'logout' %}" style="display:inline;">
+                                        {% csrf_token %}
+                                        <button type="submit" class="dropdown-item">
+                                            Logout
+                                        </button>
+                                    </form>
+                                </li>
                             </ul>
                         </li>
                     {% else %}
@@ -226,237 +255,299 @@ Create `leaves/templates/leaves/base.html` - this will be the parent template:
 Create `leaves/static/leaves/css/style.css`:
 
 ```css
-/* Custom styles for Leave Management System */
-
 :root {
-    --primary-color: #0d6efd;
-    --secondary-color: #6c757d;
-    --success-color: #198754;
-    --danger-color: #dc3545;
-    --warning-color: #ffc107;
+    --bg: #f3f7fc;
+    --surface: #ffffff;
+    --surface-soft: #f8fbff;
+    --text: #1d2a3b;
+    --muted: #5f6f86;
+    --primary: #1f6feb;
+    --primary-dark: #184fa7;
+    --accent: #2abf88;
+    --danger: #dc3545;
+    --border: #dbe5f0;
+    --shadow-sm: 0 6px 18px rgba(30, 53, 86, 0.08);
+    --shadow-md: 0 12px 30px rgba(30, 53, 86, 0.14);
+    --radius: 14px;
+    --radius-sm: 10px;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
 }
 
 body {
+    margin: 0;
+    color: var(--text);
+    font-family: "Segoe UI", "Noto Sans", sans-serif;
+    background:
+        radial-gradient(circle at 8% -5%, rgba(31, 111, 235, 0.16), transparent 40%),
+        radial-gradient(circle at 90% 2%, rgba(42, 191, 136, 0.12), transparent 35%),
+        var(--bg);
     min-height: 100vh;
-    display: flex;
-    flex-direction: column;
+    line-height: 1.5;
 }
 
-main {
-    flex: 1;
+a {
+    color: var(--primary);
 }
 
-/* Card styles */
+a:hover {
+    color: var(--primary-dark);
+}
+
+.navbar.navbar-dark.bg-primary {
+    background: linear-gradient(120deg, #1649a6, #1f6feb 52%, #20a4f3) !important;
+    box-shadow: var(--shadow-sm);
+}
+
+.navbar-brand {
+    font-weight: 700;
+    letter-spacing: 0.2px;
+}
+
+.navbar .nav-link {
+    border-radius: 999px;
+    color: rgba(255, 255, 255, 0.94) !important;
+    margin: 0 3px;
+    padding: 8px 14px !important;
+    transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.navbar .nav-link:hover,
+.navbar .nav-link:focus {
+    background-color: rgba(255, 255, 255, 0.17);
+    transform: translateY(-1px);
+}
+
+.dropdown-menu {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-sm);
+}
+
+.dropdown-item:active {
+    background-color: var(--primary);
+}
+
+main.container {
+    margin-top: 2rem !important;
+    margin-bottom: 2rem !important;
+}
+
 .card {
-    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
-    transition: transform 0.2s, box-shadow 0.2s;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    background: var(--surface);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
 }
 
-/* Dashboard cards */
-.stat-card {
-    border-left: 4px solid var(--primary-color);
+.card-header {
+    background: linear-gradient(180deg, #fdfefe, #f3f8ff);
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
 }
 
-.stat-card.pending {
-    border-left-color: var(--warning-color);
+.table {
+    --bs-table-bg: transparent;
 }
 
-.stat-card.approved {
-    border-left-color: var(--success-color);
+.table thead th {
+    background: var(--surface-soft);
+    border-bottom-width: 1px;
+    color: #28405f;
+    font-weight: 600;
 }
 
-.stat-card.rejected {
-    border-left-color: var(--danger-color);
+.table td,
+.table th {
+    vertical-align: middle;
 }
 
-/* Badge styles */
-.badge-pending {
-    background-color: var(--warning-color);
-    color: #000;
+.btn {
+    border-radius: 10px;
+    font-weight: 600;
+    letter-spacing: 0.15px;
 }
 
-.badge-approved {
-    background-color: var(--success-color);
+.btn-primary {
+    background: linear-gradient(120deg, #1d5fd1, #1f6feb);
+    border: none;
 }
 
-.badge-rejected {
-    background-color: var(--danger-color);
+.btn-primary:hover,
+.btn-primary:focus {
+    background: linear-gradient(120deg, #1a53b8, #195fcb);
 }
 
-.badge-cancelled {
-    background-color: var(--secondary-color);
+.btn-outline-primary {
+    border-color: #2f74ec;
+    color: #2f74ec;
 }
 
-/* Table styles */
-.table-hover tbody tr:hover {
-    background-color: rgba(0, 0, 0, 0.02);
-    cursor: pointer;
+.btn-outline-primary:hover {
+    background-color: #2f74ec;
+    border-color: #2f74ec;
 }
 
-/* Profile image */
-.profile-img {
-    width: 150px;
-    height: 150px;
-    object-fit: cover;
-    border-radius: 50%;
-    border: 4px solid var(--primary-color);
+.form-control,
+.form-select {
+    border-radius: 10px;
+    border: 1px solid #cfdceb;
+    min-height: 42px;
 }
 
-/* Leave balance cards */
-.leave-balance-card {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+.form-control:focus,
+.form-select:focus {
+    border-color: #8bb6ff;
+    box-shadow: 0 0 0 0.2rem rgba(31, 111, 235, 0.14);
 }
 
-/* Footer */
-footer {
-    margin-top: auto;
+.alert {
+    border-radius: 12px;
+    border: 1px solid transparent;
+    box-shadow: 0 5px 14px rgba(22, 40, 66, 0.08);
 }
 
-/* Animations */
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
+.alert-success {
+    border-color: rgba(42, 191, 136, 0.25);
+}
+
+.alert-danger {
+    border-color: rgba(220, 53, 69, 0.25);
+}
+
+.badge {
+    border-radius: 999px;
+    font-weight: 600;
+    padding: 6px 10px;
+}
+
+footer.bg-light {
+    background: #eef4fb !important;
+    border-top: 1px solid var(--border);
+}
+
+footer .text-muted {
+    color: var(--muted) !important;
+    margin: 0;
+}
+
+/* Optional dashboard layout styles retained for pages that use sidebar markup */
+.layout-wrapper {
+    display: flex;
+    min-height: calc(100vh - 56px);
+}
+
+.sidebar {
+    width: 240px;
+    height: 100%;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 20px 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.sidebar-brand {
+    font-size: 20px;
+    font-weight: 700;
+    padding: 0 20px 20px;
+}
+
+.sidebar-brand i {
+    color: var(--primary);
+    margin-right: 8px;
+}
+
+.sidebar-menu {
+    list-style: none;
+    margin: 0;
+    padding: 0 10px;
+}
+
+.sidebar-menu li {
+    margin: 5px 0;
+}
+
+.sidebar-menu a {
+    display: block;
+    color: #2b3b52;
+    text-decoration: none;
+    border-radius: 10px;
+    padding: 10px 12px;
+}
+
+.sidebar-menu a:hover,
+.sidebar-menu a.active {
+    background: #e8f1ff;
+    color: var(--primary-dark);
+}
+
+.sidebar-footer {
+    padding: 16px 20px;
+}
+
+.logout-btn {
+    width: 100%;
+    border: none;
+    background: none;
+    color: var(--danger);
+    text-align: left;
+    font-weight: 600;
+}
+
+.main-content {
+    flex: 1;
+    padding: 24px;
+}
+
+.topbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 20px;
+}
+
+.user-info {
+    font-weight: 600;
+}
+
+@media (max-width: 991.98px) {
+    main.container {
+        margin-top: 1.25rem !important;
+        margin-bottom: 1.5rem !important;
     }
-    to {
-        opacity: 1;
-        transform: translateY(0);
+
+    .layout-wrapper {
+        flex-direction: column;
     }
-}
 
-.fade-in {
-    animation: fadeIn 0.5s ease-in;
-}
+    .sidebar {
+        width: 100%;
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+    }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
-    .stat-card {
-        margin-bottom: 1rem;
+    .main-content {
+        padding: 16px;
+    }
+
+    .card:hover {
+        transform: none;
     }
 }
 ```
 
-## Step 5: Create Home Page
-
-Create `leaves/templates/leaves/home.html`:
-
-```html
-{% extends 'leaves/base.html' %}
-
-{% block title %}Home - Leave Management{% endblock %}
-
-{% block content %}
-<div class="row">
-    <!-- Hero Section -->
-    <div class="col-12 mb-5">
-        <div class="jumbotron bg-light p-5 rounded">
-            <h1 class="display-4">
-                <i class="bi bi-calendar-check text-primary"></i>
-                Welcome to Faculty Leave Management System
-            </h1>
-            <p class="lead">Streamline your leave application process with our easy-to-use platform.</p>
-            <hr class="my-4">
-            <p>Apply for leaves, track your applications, and manage your leave balance - all in one place.</p>
-            {% if not user.is_authenticated %}
-                <a class="btn btn-primary btn-lg" href="{% url 'login' %}" role="button">
-                    <i class="bi bi-box-arrow-in-right"></i> Login
-                </a>
-                <a class="btn btn-outline-primary btn-lg" href="{% url 'leaves:register' %}" role="button">
-                    <i class="bi bi-person-plus"></i> Register
-                </a>
-            {% else %}
-                <a class="btn btn-primary btn-lg" href="{% url 'leaves:dashboard' %}" role="button">
-                    <i class="bi bi-speedometer2"></i> Go to Dashboard
-                </a>
-            {% endif %}
-        </div>
-    </div>
-
-    <!-- Features Section -->
-    <div class="col-12 mb-4">
-        <h2 class="text-center mb-4">Key Features</h2>
-    </div>
-
-    <div class="col-md-4 mb-4">
-        <div class="card h-100 text-center fade-in">
-            <div class="card-body">
-                <i class="bi bi-file-earmark-text text-primary" style="font-size: 3rem;"></i>
-                <h5 class="card-title mt-3">Easy Application</h5>
-                <p class="card-text">Submit leave requests with just a few clicks. Attach supporting documents if needed.</p>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-md-4 mb-4">
-        <div class="card h-100 text-center fade-in">
-            <div class="card-body">
-                <i class="bi bi-clock-history text-success" style="font-size: 3rem;"></i>
-                <h5 class="card-title mt-3">Track Status</h5>
-                <p class="card-text">Monitor your leave applications in real-time. Get notified when status changes.</p>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-md-4 mb-4">
-        <div class="card h-100 text-center fade-in">
-            <div class="card-body">
-                <i class="bi bi-graph-up text-warning" style="font-size: 3rem;"></i>
-                <h5 class="card-title mt-3">Leave Balance</h5>
-                <p class="card-text">View your remaining leave balance for different leave types at a glance.</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Leave Types -->
-    <div class="col-12 mt-5">
-        <h2 class="text-center mb-4">Leave Types Available</h2>
-        <div class="row">
-            <div class="col-md-4 mb-3">
-                <div class="card border-primary">
-                    <div class="card-header bg-primary text-white">
-                        <h5 class="mb-0">Casual Leave</h5>
-                    </div>
-                    <div class="card-body">
-                        <p class="card-text">For personal matters and unforeseen circumstances.</p>
-                        <p class="mb-0"><strong>Maximum:</strong> 12 days per year</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4 mb-3">
-                <div class="card border-success">
-                    <div class="card-header bg-success text-white">
-                        <h5 class="mb-0">Sick Leave</h5>
-                    </div>
-                    <div class="card-body">
-                        <p class="card-text">When you're unwell and need time to recover.</p>
-                        <p class="mb-0"><strong>Maximum:</strong> 10 days per year</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4 mb-3">
-                <div class="card border-info">
-                    <div class="card-header bg-info text-white">
-                        <h5 class="mb-0">Earned Leave</h5>
-                    </div>
-                    <div class="card-body">
-                        <p class="card-text">Earned through continuous service. Can be carried forward.</p>
-                        <p class="mb-0"><strong>Maximum:</strong> 30 days per year</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-{% endblock %}
-```
-
-## Step 6: Create Dashboard Page
+## Step 5: Create Dashboard Page
 
 Create `leaves/templates/leaves/dashboard.html`:
 
@@ -466,171 +557,144 @@ Create `leaves/templates/leaves/dashboard.html`:
 {% block title %}Dashboard - Leave Management{% endblock %}
 
 {% block content %}
-<h1 class="mb-4">
-    <i class="bi bi-speedometer2"></i> Dashboard
-</h1>
+<div class="container mt-4">
 
-<!-- Welcome Message -->
-<div class="alert alert-info">
-    <h4 class="alert-heading">Welcome, {{ user.get_full_name }}!</h4>
-    <p class="mb-0">Here's an overview of your leave status.</p>
-</div>
+    <h1 class="mb-4">
+        <i class="bi bi-speedometer2"></i> Dashboard
+    </h1>
 
-<!-- Statistics Cards -->
-<div class="row mb-4">
-    <div class="col-md-3 mb-3">
-        <div class="card stat-card pending">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="text-muted mb-1">Pending</h6>
-                        <h2 class="mb-0">{{ pending_count }}</h2>
-                    </div>
-                    <div>
-                        <i class="bi bi-hourglass-split text-warning" style="font-size: 2.5rem;"></i>
-                    </div>
+    <!-- Welcome -->
+    <div class="alert alert-info">
+        <h4 class="alert-heading">
+            Welcome, {{ user.get_full_name|default:user.username }}!
+        </h4>
+        <p class="mb-0">Here's an overview of your leave status.</p>
+    </div>
+
+    <!-- Statistics -->
+    <div class="row mb-4">
+
+        <div class="col-md-3 mb-3">
+            <div class="card shadow-sm">
+                <div class="card-body text-center">
+                    <h6 class="text-muted">Pending</h6>
+                    <h2>{{ pending_count }}</h2>
                 </div>
             </div>
         </div>
-    </div>
 
-    <div class="col-md-3 mb-3">
-        <div class="card stat-card approved">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="text-muted mb-1">Approved</h6>
-                        <h2 class="mb-0">{{ approved_count }}</h2>
-                    </div>
-                    <div>
-                        <i class="bi bi-check-circle text-success" style="font-size: 2.5rem;"></i>
-                    </div>
+        <div class="col-md-3 mb-3">
+            <div class="card shadow-sm">
+                <div class="card-body text-center">
+                    <h6 class="text-muted">Approved</h6>
+                    <h2>{{ approved_count }}</h2>
                 </div>
             </div>
         </div>
-    </div>
 
-    <div class="col-md-3 mb-3">
-        <div class="card stat-card rejected">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="text-muted mb-1">Rejected</h6>
-                        <h2 class="mb-0">{{ rejected_count }}</h2>
-                    </div>
-                    <div>
-                        <i class="bi bi-x-circle text-danger" style="font-size: 2.5rem;"></i>
-                    </div>
+        <div class="col-md-3 mb-3">
+            <div class="card shadow-sm">
+                <div class="card-body text-center">
+                    <h6 class="text-muted">Rejected</h6>
+                    <h2>{{ rejected_count }}</h2>
                 </div>
             </div>
         </div>
-    </div>
 
-    <div class="col-md-3 mb-3">
-        <div class="card stat-card">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="text-muted mb-1">Total Leaves</h6>
-                        <h2 class="mb-0">{{ total_count }}</h2>
-                    </div>
-                    <div>
-                        <i class="bi bi-calendar3 text-primary" style="font-size: 2.5rem;"></i>
-                    </div>
+        <div class="col-md-3 mb-3">
+            <div class="card shadow-sm">
+                <div class="card-body text-center">
+                    <h6 class="text-muted">Total</h6>
+                    <h2>{{ total_count }}</h2>
                 </div>
             </div>
         </div>
-    </div>
-</div>
 
-<!-- Leave Balance -->
-<div class="row mb-4">
-    <div class="col-12">
-        <h3 class="mb-3">Leave Balance</h3>
     </div>
-    {% for balance in leave_balances %}
-    <div class="col-md-4 mb-3">
-        <div class="card leave-balance-card">
-            <div class="card-body">
-                <h5 class="card-title">{{ balance.leave_type.name }}</h5>
-                <div class="progress mb-2" style="height: 25px;">
-                    {% widthratio balance.remaining_leaves balance.total_leaves 100 as percentage %}
-                    <div class="progress-bar bg-warning" role="progressbar" 
-                         style="width: {{ percentage }}%">
-                        {{ balance.remaining_leaves }} / {{ balance.total_leaves }}
+
+    <!-- Leave Balance -->
+    <h3 class="mb-3">Leave Balance ({{ now|date:"Y" }})</h3>
+
+    {% if leave_balances %}
+        <div class="row mb-4">
+            {% for balance in leave_balances %}
+            <div class="col-md-4 mb-3">
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <h5>{{ balance.leave_type.name }}</h5>
+                        <p>Total: {{ balance.total_leaves }}</p>
+                        <p>Used: {{ balance.used_leaves }}</p>
+                        <p><strong>Remaining: {{ balance.remaining_leaves }}</strong></p>
                     </div>
                 </div>
-                <small>{{ balance.remaining_leaves }} days remaining</small>
             </div>
+            {% endfor %}
         </div>
-    </div>
-    {% empty %}
-    <div class="col-12">
+    {% else %}
         <div class="alert alert-warning">
-            No leave balance information available. Please contact admin.
+            No leave balance information available.
         </div>
-    </div>
-    {% endfor %}
-</div>
+    {% endif %}
 
-<!-- Recent Leave Requests -->
-<div class="row">
-    <div class="col-12">
-        <h3 class="mb-3">Recent Leave Requests</h3>
-        <div class="card">
-            <div class="card-body">
-                {% if recent_leaves %}
+    <!-- Recent Leaves -->
+    <h3 class="mb-3">Recent Leave Requests</h3>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+
+            {% if recent_leaves %}
                 <div class="table-responsive">
-                    <table class="table table-hover">
+                    <table class="table table-bordered">
                         <thead>
                             <tr>
-                                <th>Leave Type</th>
-                                <th>Start Date</th>
-                                <th>End Date</th>
+                                <th>Type</th>
+                                <th>From</th>
+                                <th>To</th>
                                 <th>Days</th>
                                 <th>Status</th>
-                                <th>Applied On</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for leave in recent_leaves %}
                             <tr>
                                 <td>{{ leave.leave_type.name }}</td>
-                                <td>{{ leave.start_date|date:"M d, Y" }}</td>
-                                <td>{{ leave.end_date|date:"M d, Y" }}</td>
+                                <td>{{ leave.start_date }}</td>
+                                <td>{{ leave.end_date }}</td>
                                 <td>{{ leave.number_of_days }}</td>
                                 <td>
-                                    <span class="badge badge-{{ leave.status }}">
+                                    <span class="badge bg-secondary">
                                         {{ leave.get_status_display }}
                                     </span>
                                 </td>
-                                <td>{{ leave.applied_on|date:"M d, Y" }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
+
                 <div class="text-center mt-3">
                     <a href="{% url 'leaves:leave_history' %}" class="btn btn-primary">
-                        View All Leaves
+                        View All
                     </a>
                 </div>
-                {% else %}
-                <p class="text-center text-muted mb-0">No leave requests yet.</p>
-                <div class="text-center mt-3">
+
+            {% else %}
+                <p class="text-muted text-center">No leave requests yet.</p>
+                <div class="text-center">
                     <a href="{% url 'leaves:apply_leave' %}" class="btn btn-primary">
                         Apply for Leave
                     </a>
                 </div>
-                {% endif %}
-            </div>
+            {% endif %}
+
         </div>
     </div>
+
 </div>
 {% endblock %}
 ```
 
-## Step 7: Update Views
+## Step 6: Update Views
 
 Update `leaves/views.py` to render these templates:
 
@@ -641,74 +705,77 @@ from django.contrib import messages
 from .models import LeaveRequest, LeaveBalance, FacultyProfile
 from datetime import datetime
 
-def home(request):
-    """Home page view"""
-    return render(request, 'leaves/home.html')
 
 @login_required
 def dashboard(request):
-    """Dashboard view - shows overview of user's leaves"""
-    try:
-        faculty = request.user.faculty_profile
-        
-        # Get leave statistics
-        pending_count = LeaveRequest.objects.filter(
-            faculty=faculty, 
-            status='pending'
-        ).count()
-        
-        approved_count = LeaveRequest.objects.filter(
-            faculty=faculty, 
-            status='approved'
-        ).count()
-        
-        rejected_count = LeaveRequest.objects.filter(
-            faculty=faculty, 
-            status='rejected'
-        ).count()
-        
-        total_count = LeaveRequest.objects.filter(faculty=faculty).count()
-        
-        # Get leave balances
-        current_year = datetime.now().year
-        leave_balances = LeaveBalance.objects.filter(
-            faculty=faculty,
-            year=current_year
-        )
-        
-        # Get recent leave requests
-        recent_leaves = LeaveRequest.objects.filter(
-            faculty=faculty
-        ).order_by('-applied_on')[:5]
-        
-        context = {
-            'pending_count': pending_count,
-            'approved_count': approved_count,
-            'rejected_count': rejected_count,
-            'total_count': total_count,
-            'leave_balances': leave_balances,
-            'recent_leaves': recent_leaves,
-        }
-        
-        return render(request, 'leaves/dashboard.html', context)
-    
-    except FacultyProfile.DoesNotExist:
-        messages.error(request, 'Faculty profile not found. Please contact admin.')
-        return redirect('leaves:home')
+
+    # If admin → redirect to admin panel
+    if request.user.is_superuser:
+        return redirect("admin:index")
+
+    # Ensure faculty profile exists
+    if not hasattr(request.user, "faculty_profile"):
+        return redirect("logout")
+
+    faculty = request.user.faculty_profile
+    current_year = datetime.now().year
+
+    # Leave counts
+    pending_count = LeaveRequest.objects.filter(
+        faculty=faculty,
+        status="pending"
+    ).count()
+
+    approved_count = LeaveRequest.objects.filter(
+        faculty=faculty,
+        status="approved"
+    ).count()
+
+    rejected_count = LeaveRequest.objects.filter(
+        faculty=faculty,
+        status="rejected"
+    ).count()
+
+    total_count = LeaveRequest.objects.filter(
+        faculty=faculty
+    ).count()
+
+    # Leave balances
+    leave_balances = LeaveBalance.objects.filter(
+        faculty=faculty,
+        year=current_year
+    )
+
+    # Recent leave requests (latest 5)
+    recent_leaves = LeaveRequest.objects.filter(
+        faculty=faculty
+    ).order_by("-applied_on")[:5]
+
+    context = {
+        "pending_count": pending_count,
+        "approved_count": approved_count,
+        "rejected_count": rejected_count,
+        "total_count": total_count,
+        "leave_balances": leave_balances,
+        "recent_leaves": recent_leaves,
+    }
+
+    return render(request, "leaves/dashboard.html", context)
 ```
 
-## Step 8: Update URL Patterns
+## Step 7: Update URL Patterns
 
 Update `leaves/urls.py`:
 
 ```python
 from django.urls import path
 from . import views
+from .views import CustomLoginView
 
 app_name = 'leaves'
 
 urlpatterns = [
-    path('', views.home, name='home'),
+    path('login/', CustomLoginView.as_view(), name='login'),
     path('dashboard/', views.dashboard, name='dashboard'),
     # We'll add more URLs in next parts
     path('apply/', views.apply_leave, name='apply_leave'),
@@ -723,7 +790,6 @@ urlpatterns = [
 
 ```
 base.html (Parent)
-    ├── home.html (Child)
     ├── dashboard.html (Child)
     └── other_pages.html (Child)
 ```
