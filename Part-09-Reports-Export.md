@@ -16,279 +16,202 @@ pip install openpyxl   # For Excel export
 Add to `leaves/views.py`:
 
 ```python
-from django.http import HttpResponse
 from django.contrib.auth.decorators import login_required, user_passes_test
-from django.db.models import Count, Q, Sum
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
+from django.utils import timezone
+from .models import LeaveRequest, LeaveBalance, FacultyProfile
+from .forms import LeaveReviewForm, LeaveRequestForm
+from django.http import HttpResponse
 from django.utils import timezone
 import csv
 from datetime import datetime, timedelta
+from django.contrib.auth import login
+from .forms import FacultyRegistrationForm
+from django.db.models import Count, Q, Sum
+from django.db import models
+import json
+from django.utils.timezone import now
+from reportlab.pdfgen import canvas
+import io
+from django.contrib.auth.views import LoginView
+from django.urls import reverse_lazy
+from .forms import ProfileUpdateForm
+
+class CustomLoginView(LoginView):
+    template_name = "leaves/login.html"
+
+    def get_success_url(self):
+        user = self.request.user
+
+        if user.is_superuser:
+            return reverse_lazy('leaves:reports')   # Admin goes to reports
+        else:
+            return reverse_lazy('leaves:dashboard') # Faculty goes to dashboard
 
 @login_required
-@user_passes_test(lambda u: u.is_staff)
 def reports(request):
-    """Generate leave reports and analytics"""
-    current_year = datetime.now().year
-    
-    # Leave statistics by type
-    leave_by_type = LeaveRequest.objects.filter(
-        start_date__year=current_year
-    ).values('leave_type__name').annotate(
-        total=Count('id'),
-        approved=Count('id', filter=Q(status='approved')),
-        rejected=Count('id', filter=Q(status='rejected')),
-        pending=Count('id', filter=Q(status='pending'))
+
+    current_year = now().year
+
+    # 🔹 Role-based filtering
+    if request.user.is_superuser:
+        leaves = LeaveRequest.objects.filter(start_date__year=current_year)
+    else:
+        faculty_profile = FacultyProfile.objects.get(user=request.user)
+        leaves = LeaveRequest.objects.filter(
+            faculty=faculty_profile,
+        )
+
+    # 🔹 Leave type stats
+    leave_type_data = leaves.values('leave_type__name').annotate(
+        total=Count('id')
     )
-    
-    # Leave statistics by department
-    leave_by_dept = LeaveRequest.objects.filter(
-        start_date__year=current_year
-    ).values('faculty__department').annotate(
-        total=Count('id'),
-        total_days=Sum('number_of_days')
-    ).order_by('-total')
-    
-    # Monthly leave trend
+
+    leave_type_labels = [item['leave_type__name'] for item in leave_type_data]
+    leave_type_totals = [item['total'] for item in leave_type_data]
+
+    leave_type_approved = []
+    leave_type_rejected = []
+    leave_type_pending = []
+
+    for label in leave_type_labels:
+        leave_type_approved.append(
+            leaves.filter(leave_type__name=label, status='approved').count()
+        )
+        leave_type_rejected.append(
+            leaves.filter(leave_type__name=label, status='rejected').count()
+        )
+        leave_type_pending.append(
+            leaves.filter(leave_type__name=label, status='pending').count()
+        )
+
+    # 🔹 Monthly approved
     monthly_leaves = []
     for month in range(1, 13):
-        count = LeaveRequest.objects.filter(
-            start_date__year=current_year,
-            start_date__month=month,
-            status='approved'
-        ).count()
-        monthly_leaves.append(count)
-    
-    # Top leave requesters
-    top_requesters = LeaveRequest.objects.filter(
-        start_date__year=current_year
-    ).values(
-        'faculty__user__first_name',
-        'faculty__user__last_name',
-        'faculty__department'
-    ).annotate(
-        total_requests=Count('id'),
-        total_days=Sum('number_of_days')
-    ).order_by('-total_requests')[:10]
-    
+        monthly_leaves.append(
+            leaves.filter(
+                status='approved',
+                start_date__month=month
+            ).count()
+        )
+
+    # 🔹 ADDITION: Admin-only analytics tables
+    if request.user.is_superuser:
+
+        leave_by_dept = leaves.values(
+            'faculty__department'
+        ).annotate(
+            total=Count('id'),
+            total_days=Sum('number_of_days')
+        )
+
+        top_requesters = leaves.values(
+            'faculty__user__first_name',
+            'faculty__user__last_name',
+            'faculty__department'
+        ).annotate(
+            total_requests=Count('id'),
+            total_days=Sum('number_of_days')
+        ).order_by('-total_requests')[:5]
+
+    else:
+        leave_by_dept = None
+        top_requesters = None
+
     context = {
-        'leave_by_type': leave_by_type,
-        'leave_by_dept': leave_by_dept,
-        'monthly_leaves': monthly_leaves,
-        'top_requesters': top_requesters,
-        'current_year': current_year,
+        "current_year": current_year,
+        "leave_type_labels": json.dumps(leave_type_labels),
+        "leave_type_totals": json.dumps(leave_type_totals),
+        "leave_type_approved": json.dumps(leave_type_approved),
+        "leave_type_rejected": json.dumps(leave_type_rejected),
+        "leave_type_pending": json.dumps(leave_type_pending),
+        "monthly_leaves": json.dumps(monthly_leaves),
+
+        # 🔹 ADDED
+        "leave_by_dept": leave_by_dept,
+        "top_requesters": top_requesters,
     }
-    return render(request, 'leaves/reports.html', context)
+
+    return render(request, "leaves/reports.html", context)
 
 
 @login_required
-@user_passes_test(lambda u: u.is_staff)
 def export_leaves_csv(request):
-    """Export leave requests to CSV"""
-    # Get filter parameters
-    status = request.GET.get('status', '')
-    department = request.GET.get('department', '')
-    year = request.GET.get('year', datetime.now().year)
-    
-    # Build queryset
-    leaves = LeaveRequest.objects.filter(start_date__year=year)
-    if status:
-        leaves = leaves.filter(status=status)
-    if department:
-        leaves = leaves.filter(faculty__department=department)
-    
-    # Create CSV response
+
+    year = request.GET.get('year', now().year)
+
+    # Role-based filtering
+    if request.user.is_superuser:
+        leaves = LeaveRequest.objects.filter(start_date__year=year)
+    else:
+        faculty_profile = FacultyProfile.objects.get(user=request.user)
+        leaves = LeaveRequest.objects.filter(
+            faculty=faculty_profile,
+            start_date__year=year
+        )
+
     response = HttpResponse(content_type='text/csv')
-    response['Content-Disposition'] = f'attachment; filename="leave_requests_{year}.csv"'
-    
+    response['Content-Disposition'] = f'attachment; filename="leave_report_{year}.csv"'
+
     writer = csv.writer(response)
     writer.writerow([
-        'Faculty Name', 'Employee ID', 'Department', 'Leave Type',
-        'Start Date', 'End Date', 'Days', 'Status', 'Applied On',
-        'Reviewed By', 'Reviewed On', 'Remarks'
+        "Faculty",
+        "Leave Type",
+        "Start Date",
+        "End Date",
+        "Days",
+        "Status"
     ])
-    
+
     for leave in leaves:
         writer.writerow([
             leave.faculty.user.get_full_name(),
-            leave.faculty.employee_id,
-            leave.faculty.department,
             leave.leave_type.name,
             leave.start_date,
             leave.end_date,
             leave.number_of_days,
-            leave.get_status_display(),
-            leave.applied_on.strftime('%Y-%m-%d %H:%M'),
-            leave.reviewed_by.get_full_name() if leave.reviewed_by else '',
-            leave.reviewed_on.strftime('%Y-%m-%d %H:%M') if leave.reviewed_on else '',
-            leave.admin_remarks or ''
+            leave.status
         ])
-    
+
     return response
 
 
 @login_required
-@user_passes_test(lambda u: u.is_staff)
 def export_leaves_pdf(request):
-    """Export leave summary to PDF"""
-    from reportlab.lib import colors
-    from reportlab.lib.pagesizes import letter, A4
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.units import inch
-    from io import BytesIO
-    
-    # Create PDF buffer
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4)
-    elements = []
-    styles = getSampleStyleSheet()
-    
-    # Title
-    title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=24,
-        textColor=colors.HexColor('#0d6efd'),
-        spaceAfter=30,
-        alignment=1  # Center
-    )
-    elements.append(Paragraph('Leave Management Report', title_style))
-    elements.append(Paragraph(f'Generated on: {datetime.now().strftime("%B %d, %Y")}', styles['Normal']))
-    elements.append(Spacer(1, 0.5*inch))
-    
-    # Statistics
-    current_year = datetime.now().year
-    total = LeaveRequest.objects.filter(start_date__year=current_year).count()
-    pending = LeaveRequest.objects.filter(start_date__year=current_year, status='pending').count()
-    approved = LeaveRequest.objects.filter(start_date__year=current_year, status='approved').count()
-    rejected = LeaveRequest.objects.filter(start_date__year=current_year, status='rejected').count()
-    
-    stats_data = [
-        ['Statistics', 'Count'],
-        ['Total Requests', str(total)],
-        ['Pending', str(pending)],
-        ['Approved', str(approved)],
-        ['Rejected', str(rejected)],
-    ]
-    
-    stats_table = Table(stats_data, colWidths=[3*inch, 1.5*inch])
-    stats_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 14),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black)
-    ]))
-    
-    elements.append(stats_table)
-    elements.append(Spacer(1, 0.5*inch))
-    
-    # Department-wise summary
-    elements.append(Paragraph('Department-wise Leave Summary', styles['Heading2']))
-    elements.append(Spacer(1, 0.2*inch))
-    
-    dept_data = [['Department', 'Total Requests', 'Total Days']]
-    dept_summary = LeaveRequest.objects.filter(
-        start_date__year=current_year
-    ).values('faculty__department').annotate(
-        total=Count('id'),
-        days=Sum('number_of_days')
-    ).order_by('-total')
-    
-    for dept in dept_summary:
-        dept_data.append([
-            dept['faculty__department'],
-            str(dept['total']),
-            str(dept['days'])
-        ])
-    
-    dept_table = Table(dept_data, colWidths=[2.5*inch, 1.5*inch, 1.5*inch])
-    dept_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 12),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.lightblue),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black)
-    ]))
-    
-    elements.append(dept_table)
-    
-    # Build PDF
-    doc.build(elements)
-    
-    # Return PDF
-    pdf = buffer.getvalue()
-    buffer.close()
-    
-    response = HttpResponse(content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="leave_report_{current_year}.pdf"'
-    response.write(pdf)
-    
+
+    year = request.GET.get("year", now().year)
+
+    if request.user.is_superuser:
+        leaves = LeaveRequest.objects.filter(start_date__year=year)
+    else:
+        faculty_profile = FacultyProfile.objects.get(user=request.user)
+        leaves = LeaveRequest.objects.filter(
+            faculty=faculty_profile,
+            start_date__year=year
+        )
+
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer)
+
+    y = 800
+    p.drawString(200, y, f"Leave Report - {year}")
+    y -= 30
+
+    for leave in leaves:
+        text = f"{leave.faculty.user.get_full_name()} | {leave.leave_type.name} | {leave.start_date} | {leave.status}"
+        p.drawString(50, y, text)
+        y -= 20
+
+    p.showPage()
+    p.save()
+
+    buffer.seek(0)
+
+    response = HttpResponse(buffer, content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="leave_report_{year}.pdf"'
+
     return response
-
-
-@login_required
-def my_leave_report(request):
-    """Personal leave report for faculty"""
-    try:
-        faculty = request.user.faculty_profile
-    except FacultyProfile.DoesNotExist:
-        messages.error(request, 'Profile not found.')
-        return redirect('leaves:home')
-    
-    current_year = datetime.now().year
-    
-    # Personal statistics
-    total_leaves = LeaveRequest.objects.filter(
-        faculty=faculty,
-        start_date__year=current_year
-    ).count()
-    
-    approved_leaves = LeaveRequest.objects.filter(
-        faculty=faculty,
-        start_date__year=current_year,
-        status='approved'
-    ).aggregate(total=Sum('number_of_days'))['total'] or 0
-    
-    pending_leaves = LeaveRequest.objects.filter(
-        faculty=faculty,
-        status='pending'
-    ).count()
-    
-    # Leave balance
-    leave_balances = LeaveBalance.objects.filter(
-        faculty=faculty,
-        year=current_year
-    )
-    
-    # Monthly breakdown
-    monthly_data = []
-    for month in range(1, 13):
-        count = LeaveRequest.objects.filter(
-            faculty=faculty,
-            start_date__year=current_year,
-            start_date__month=month,
-            status='approved'
-        ).aggregate(days=Sum('number_of_days'))['days'] or 0
-        monthly_data.append({
-            'month': datetime(current_year, month, 1).strftime('%B'),
-            'days': count
-        })
-    
-    context = {
-        'total_leaves': total_leaves,
-        'approved_leaves': approved_leaves,
-        'pending_leaves': pending_leaves,
-        'leave_balances': leave_balances,
-        'monthly_data': monthly_data,
-        'current_year': current_year,
-    }
-    return render(request, 'leaves/my_leave_report.html', context)
 ```
 
 ## Step 3: Create Reports Template
@@ -307,47 +230,57 @@ Create `leaves/templates/leaves/reports.html`:
 {% block content %}
 <div class="row mb-4">
     <div class="col-md-8">
-        <h1><i class="bi bi-graph-up"></i> Leave Reports & Analytics</h1>
+        <h2>Leave Reports & Analytics ({{ current_year }})</h2>
     </div>
     <div class="col-md-4 text-end">
         <div class="btn-group">
             <a href="{% url 'leaves:export_leaves_csv' %}?year={{ current_year }}" class="btn btn-success">
-                <i class="bi bi-file-earmark-spreadsheet"></i> Export CSV
+                Export CSV
             </a>
             <a href="{% url 'leaves:export_leaves_pdf' %}" class="btn btn-danger">
-                <i class="bi bi-file-earmark-pdf"></i> Export PDF
+                Export PDF
             </a>
         </div>
     </div>
 </div>
 
-<!-- Leave by Type -->
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">Leave Requests by Type ({{ current_year }})</h5>
-            </div>
-            <div class="card-body">
-                <canvas id="leaveTypeChart"></canvas>
-            </div>
+<!-- Leave Type Chart -->
+<div class="card mb-4">
+    <div class="card-header">
+        Leave Requests by Type
+    </div>
+    <div class="card-body">
+        <canvas id="leaveTypeChart"></canvas>
+    </div>
+</div>
+
+<!-- Monthly Approved Leaves -->
+<div class="col-md-6">
+    <div class="card">
+        <div class="card-header">
+            Monthly Approved Leaves
+        </div>
+        <div class="card-body">
+            <canvas id="monthlyChart"></canvas>
         </div>
     </div>
 </div>
 
-<!-- Leave by Department -->
+{% if request.user.is_superuser %}
+
+<!-- Department-wise Leave Summary -->
 <div class="row mb-4">
     <div class="col-md-6">
         <div class="card">
             <div class="card-header">
-                <h5 class="mb-0">Leave by Department</h5>
+                Leave by Department
             </div>
             <div class="card-body">
-                <table class="table table-sm">
+                <table class="table table-bordered table-sm">
                     <thead>
                         <tr>
                             <th>Department</th>
-                            <th>Requests</th>
+                            <th>Total Requests</th>
                             <th>Total Days</th>
                         </tr>
                     </thead>
@@ -356,121 +289,133 @@ Create `leaves/templates/leaves/reports.html`:
                         <tr>
                             <td>{{ dept.faculty__department }}</td>
                             <td>{{ dept.total }}</td>
-                            <td>{{ dept.total_days }}</td>
+                            <td>{{ dept.total_days|default:0 }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="3" class="text-center">No data available</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
-            </div>
-        </div>
-    </div>
-    
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">Monthly Trend</h5>
-            </div>
-            <div class="card-body">
-                <canvas id="monthlyChart"></canvas>
             </div>
         </div>
     </div>
 </div>
 
 <!-- Top Requesters -->
-<div class="row">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">Top Leave Requesters</h5>
-            </div>
-            <div class="card-body">
-                <table class="table table-striped">
-                    <thead>
-                        <tr>
-                            <th>Faculty</th>
-                            <th>Department</th>
-                            <th>Total Requests</th>
-                            <th>Total Days</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for faculty in top_requesters %}
-                        <tr>
-                            <td>{{ faculty.faculty__user__first_name }} {{ faculty.faculty__user__last_name }}</td>
-                            <td>{{ faculty.faculty__department }}</td>
-                            <td>{{ faculty.total_requests }}</td>
-                            <td>{{ faculty.total_days }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+<div class="card">
+    <div class="card-header">
+        Top Leave Requesters
+    </div>
+    <div class="card-body">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Faculty</th>
+                    <th>Department</th>
+                    <th>Total Requests</th>
+                    <th>Total Days</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for faculty in top_requesters %}
+                <tr>
+                    <td>
+                        {{ faculty.faculty__user__first_name }}
+                        {{ faculty.faculty__user__last_name }}
+                    </td>
+                    <td>{{ faculty.faculty__department }}</td>
+                    <td>{{ faculty.total_requests }}</td>
+                    <td>{{ faculty.total_days|default:0 }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="4" class="text-center">No data available</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
 </div>
+
+{% endif %}
+
 {% endblock %}
 
-{% block extra_js %}
-<script>
-// Leave by Type Chart
-const typeCtx = document.getElementById('leaveTypeChart').getContext('2d');
-const typeChart = new Chart(typeCtx, {
-    type: 'bar',
-    data: {
-        labels: [{% for item in leave_by_type %}'{{ item.leave_type__name }}',{% endfor %}],
-        datasets: [{
-            label: 'Total',
-            data: [{% for item in leave_by_type %}{{ item.total }},{% endfor %}],
-            backgroundColor: 'rgba(54, 162, 235, 0.5)',
-        }, {
-            label: 'Approved',
-            data: [{% for item in leave_by_type %}{{ item.approved }},{% endfor %}],
-            backgroundColor: 'rgba(75, 192, 192, 0.5)',
-        }, {
-            label: 'Rejected',
-            data: [{% for item in leave_by_type %}{{ item.rejected }},{% endfor %}],
-            backgroundColor: 'rgba(255, 99, 132, 0.5)',
-        }, {
-            label: 'Pending',
-            data: [{% for item in leave_by_type %}{{ item.pending }},{% endfor %}],
-            backgroundColor: 'rgba(255, 206, 86, 0.5)',
-        }]
-    },
-    options: {
-        responsive: true,
-        scales: {
-            y: {
-                beginAtZero: true
-            }
-        }
-    }
-});
 
-// Monthly Trend Chart
-const monthlyCtx = document.getElementById('monthlyChart').getContext('2d');
-const monthlyChart = new Chart(monthlyCtx, {
-    type: 'line',
-    data: {
-        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-        datasets: [{
-            label: 'Approved Leaves',
-            data: {{ monthly_leaves|safe }},
-            borderColor: 'rgb(75, 192, 192)',
-            backgroundColor: 'rgba(75, 192, 192, 0.2)',
-            tension: 0.1
-        }]
-    },
-    options: {
-        responsive: true,
-        scales: {
-            y: {
-                beginAtZero: true
+{% block extra_js %}
+
+<!-- Safe JSON Data -->
+<script id="report-data" type="application/json">
+{
+    "labels": {{ leave_type_labels|default:"[]"|safe }},
+    "totals": {{ leave_type_totals|default:"[]"|safe }},
+    "approved": {{ leave_type_approved|default:"[]"|safe }},
+    "rejected": {{ leave_type_rejected|default:"[]"|safe }},
+    "pending": {{ leave_type_pending|default:"[]"|safe }},
+    "monthly": {{ monthly_leaves|default:"[]"|safe }}
+}
+</script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+    const rawData = document.getElementById("report-data").textContent;
+    const reportData = JSON.parse(rawData);
+
+    new Chart(document.getElementById("leaveTypeChart"), {
+        type: "bar",
+        data: {
+            labels: reportData.labels,
+            datasets: [
+                {
+                    label: "Total",
+                    data: reportData.totals
+                },
+                {
+                    label: "Approved",
+                    data: reportData.approved
+                },
+                {
+                    label: "Rejected",
+                    data: reportData.rejected
+                },
+                {
+                    label: "Pending",
+                    data: reportData.pending
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: { beginAtZero: true }
             }
         }
-    }
+    });
+
+    new Chart(document.getElementById("monthlyChart"), {
+        type: "line",
+        data: {
+            labels: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
+            datasets: [{
+                label: "Approved Leaves",
+                data: reportData.monthly,
+                tension: 0.3
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: { beginAtZero: true }
+            }
+        }
+    });
+
 });
 </script>
+
 {% endblock %}
 ```
 
@@ -484,7 +429,6 @@ urlpatterns = [
     
     # Reports
     path('reports/', views.reports, name='reports'),
-    path('reports/my/', views.my_leave_report, name='my_leave_report'),
     path('export/csv/', views.export_leaves_csv, name='export_leaves_csv'),
     path('export/pdf/', views.export_leaves_pdf, name='export_leaves_pdf'),
 ]
