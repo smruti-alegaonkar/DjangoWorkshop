@@ -354,8 +354,6 @@ To manage these models through Django admin, register them in `leaves/admin.py`:
 from django.contrib import admin
 from .models import FacultyProfile, LeaveType, LeaveBalance, LeaveRequest
 
-# Register your models here.
-
 @admin.register(FacultyProfile)
 class FacultyProfileAdmin(admin.ModelAdmin):
     list_display = ['employee_id', 'get_full_name', 'department', 'designation', 'date_of_joining']
