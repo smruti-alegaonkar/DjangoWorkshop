@@ -17,10 +17,8 @@ from .models import LeaveRequest, LeaveBalance
 from .forms import LeaveReviewForm
 
 def is_staff_user(user):
-    """Check if user is staff"""
-    return user.is_staff
+    return user.is_superuser
 
-@login_required
 @user_passes_test(is_staff_user)
 def pending_requests(request):
     """View all pending leave requests"""
@@ -55,7 +53,7 @@ def review_leave(request, leave_id):
                         leave_type=leave.leave_type,
                         year=leave.start_date.year
                     )
-                    leave_balance.used_leaves += float(leave.number_of_days)
+                    leave_balance.used_leaves = leave_balance.used_leaves + leave.number_of_days
                     leave_balance.save()
                     
                     messages.success(request, f'Leave request approved for {leave.faculty.user.get_full_name()}.')
@@ -130,8 +128,8 @@ from . import views
 app_name = 'leaves'
 
 urlpatterns = [
-    path('', views.home, name='home'),
-    path('dashboard/', views.dashboard, name='dashboard'),
+    path('login/', CustomLoginView.as_view(), name='login'),
+    path('', views.dashboard, name='dashboard'),
     path('apply/', views.apply_leave, name='apply_leave'),
     path('history/', views.leave_history, name='leave_history'),
     path('profile/', views.profile, name='profile'),
