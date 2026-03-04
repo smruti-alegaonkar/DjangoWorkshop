@@ -45,6 +45,54 @@ from django.contrib.auth.forms import UserCreationForm
 from django.core.exceptions import ValidationError
 from .models import LeaveRequest, FacultyProfile
 from datetime import date
+from django import forms
+
+
+class ProfileUpdateForm(forms.ModelForm):
+
+    first_name = forms.CharField(max_length=150)
+    last_name = forms.CharField(max_length=150)
+    email = forms.EmailField()
+
+    class Meta:
+        model = FacultyProfile
+        fields = [
+            "first_name",
+            "last_name",
+            "email",
+            "department",
+            "designation",
+            "phone_number",
+            "profile_picture",
+        ]
+
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop("user")
+        super().__init__(*args, **kwargs)
+
+        # Prefill user data
+        self.fields["first_name"].initial = self.user.first_name
+        self.fields["last_name"].initial = self.user.last_name
+        self.fields["email"].initial = self.user.email
+
+        for field in self.fields:
+            self.fields[field].widget.attrs.update({
+                "class": "form-control"
+            })
+
+    def save(self, commit=True):
+        faculty = super().save(commit=False)
+
+        # Update User model
+        self.user.first_name = self.cleaned_data["first_name"]
+        self.user.last_name = self.cleaned_data["last_name"]
+        self.user.email = self.cleaned_data["email"]
+        self.user.save()
+
+        if commit:
+            faculty.save()
+
+        return faculty
 
 class LeaveRequestForm(forms.ModelForm):
     """
@@ -233,9 +281,13 @@ class FacultyRegistrationForm(UserCreationForm):
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Add Bootstrap classes to password fields
-        self.fields['password1'].widget.attrs.update({'class': 'form-control'})
-        self.fields['password2'].widget.attrs.update({'class': 'form-control'})
+
+        # Only pre-fill if instance is FacultyProfile
+        if isinstance(self.instance, FacultyProfile) and self.instance.pk:
+            if self.instance.user:
+                self.fields['first_name'].initial = self.instance.user.first_name
+                self.fields['last_name'].initial = self.instance.user.last_name
+                self.fields['email'].initial = self.instance.user.email
     
     def clean_email(self):
         """
@@ -352,63 +404,40 @@ from datetime import datetime
 
 @login_required
 def apply_leave(request):
-    """
-    View for faculty to apply for leave
-    """
+
+    if request.user.is_staff:
+        return redirect('leaves:pending_requests')
+
     try:
         faculty = request.user.faculty_profile
     except FacultyProfile.DoesNotExist:
-        messages.error(request, 'Faculty profile not found. Please contact admin.')
-        return redirect('leaves:home')
-    
+        return redirect('leaves:register')
+
     if request.method == 'POST':
         form = LeaveRequestForm(request.POST, request.FILES)
         if form.is_valid():
-            leave_request = form.save(commit=False)
-            leave_request.faculty = faculty
-            leave_request.save()
-            
-            messages.success(
-                request, 
-                'Leave application submitted successfully! You will be notified once reviewed.'
-            )
-            return redirect('leaves:leave_history')
+            leave = form.save(commit=False)
+            leave.faculty = faculty
+            leave.save()
+            messages.success(request, "Leave applied successfully.")
+            return redirect('leaves:dashboard')
     else:
         form = LeaveRequestForm()
-    
-    # Get leave balances for current year
-    current_year = datetime.now().year
-    leave_balances = LeaveBalance.objects.filter(
-        faculty=faculty,
-        year=current_year
-    )
-    
-    context = {
-        'form': form,
-        'leave_balances': leave_balances,
-    }
-    return render(request, 'leaves/apply_leave.html', context)
+
+    return render(request, 'leaves/apply_leave.html', {'form': form})
 
 
 @login_required
 def leave_history(request):
-    """
-    View to display faculty's leave history
-    """
-    try:
-        faculty = request.user.faculty_profile
-        leave_requests = LeaveRequest.objects.filter(
-            faculty=faculty
-        ).order_by('-applied_on')
-        
-        context = {
-            'leave_requests': leave_requests,
-        }
-        return render(request, 'leaves/leave_history.html', context)
-    
-    except FacultyProfile.DoesNotExist:
-        messages.error(request, 'Faculty profile not found.')
-        return redirect('leaves:home')
+    faculty_profile = FacultyProfile.objects.get(user=request.user)
+
+    leave_requests = LeaveRequest.objects.filter(
+        faculty=faculty_profile
+    ).order_by('-applied_on')
+
+    return render(request, 'leaves/leave_history.html', {
+        'leave_requests': leave_requests
+    })
 ```
 
 ## Step 3: Create Leave Application Template
@@ -418,128 +447,63 @@ Create `leaves/templates/leaves/apply_leave.html`:
 ```html
 {% extends 'leaves/base.html' %}
 
-{% block title %}Apply Leave - Leave Management{% endblock %}
-
 {% block content %}
-<div class="row">
-    <div class="col-lg-8 mx-auto">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <h4 class="mb-0">
-                    <i class="bi bi-file-earmark-plus"></i> Apply for Leave
-                </h4>
-            </div>
-            <div class="card-body">
-                <!-- Leave Balance Display -->
-                <div class="alert alert-info mb-4">
-                    <h5 class="alert-heading">Your Leave Balance</h5>
-                    <div class="row">
-                        {% for balance in leave_balances %}
-                        <div class="col-md-4">
-                            <strong>{{ balance.leave_type.name }}:</strong><br>
-                            {{ balance.remaining_leaves }} of {{ balance.total_leaves }} days remaining
-                        </div>
-                        {% empty %}
-                        <div class="col-12">
-                            <p class="mb-0">No leave balance information available.</p>
-                        </div>
-                        {% endfor %}
+<div class="container mt-5">
+    <div class="card shadow-lg mb-4">
+        <div class="card-header" style="background: linear-gradient(90deg, #0d6efd, #0b5ed7); color: white;">
+            <h4 class="mb-0">Apply for Leave</h4>
+        </div>
+
+        <div class="card-body">
+
+            <form method="POST" enctype="multipart/form-data">
+                {% csrf_token %}
+
+                <!-- Show form errors -->
+                {% if form.errors %}
+                <div class="alert alert-danger">
+                    Please correct the errors below.
+                    {{ form.errors }}
+                </div>
+                {% endif %}
+
+                <div class="row">
+
+                    <div class="col-md-6 mb-3">
+                        {{ form.leave_type.label_tag }}
+                        {{ form.leave_type }}
                     </div>
+
+                    <div class="col-md-6 mb-3">
+                        {{ form.start_date.label_tag }}
+                        {{ form.start_date }}
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        {{ form.end_date.label_tag }}
+                        {{ form.end_date }}
+                    </div>
+
+                    <div class="col-md-12 mb-3">
+                        {{ form.reason.label_tag }}
+                        {{ form.reason }}
+                    </div>
+
+                    <div class="col-md-12 mb-3">
+                        {{ form.supporting_document.label_tag }}
+                        {{ form.supporting_document }}
+                    </div>
+
                 </div>
 
-                <!-- Form -->
-                <form method="post" enctype="multipart/form-data" novalidate>
-                    {% csrf_token %}
-                    
-                    <!-- Display form errors -->
-                    {% if form.non_field_errors %}
-                        <div class="alert alert-danger">
-                            {{ form.non_field_errors }}
-                        </div>
-                    {% endif %}
-                    
-                    <!-- Leave Type -->
-                    <div class="mb-3">
-                        <label for="{{ form.leave_type.id_for_label }}" class="form-label">
-                            {{ form.leave_type.label }} <span class="text-danger">*</span>
-                        </label>
-                        {{ form.leave_type }}
-                        {% if form.leave_type.errors %}
-                            <div class="text-danger">{{ form.leave_type.errors }}</div>
-                        {% endif %}
-                        {% if form.leave_type.help_text %}
-                            <small class="form-text text-muted">{{ form.leave_type.help_text }}</small>
-                        {% endif %}
-                    </div>
-                    
-                    <!-- Date Range -->
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label for="{{ form.start_date.id_for_label }}" class="form-label">
-                                {{ form.start_date.label }} <span class="text-danger">*</span>
-                            </label>
-                            {{ form.start_date }}
-                            {% if form.start_date.errors %}
-                                <div class="text-danger">{{ form.start_date.errors }}</div>
-                            {% endif %}
-                            {% if form.start_date.help_text %}
-                                <small class="form-text text-muted">{{ form.start_date.help_text }}</small>
-                            {% endif %}
-                        </div>
-                        
-                        <div class="col-md-6 mb-3">
-                            <label for="{{ form.end_date.id_for_label }}" class="form-label">
-                                {{ form.end_date.label }} <span class="text-danger">*</span>
-                            </label>
-                            {{ form.end_date }}
-                            {% if form.end_date.errors %}
-                                <div class="text-danger">{{ form.end_date.errors }}</div>
-                            {% endif %}
-                            {% if form.end_date.help_text %}
-                                <small class="form-text text-muted">{{ form.end_date.help_text }}</small>
-                            {% endif %}
-                        </div>
-                    </div>
-                    
-                    <!-- Reason -->
-                    <div class="mb-3">
-                        <label for="{{ form.reason.id_for_label }}" class="form-label">
-                            {{ form.reason.label }} <span class="text-danger">*</span>
-                        </label>
-                        {{ form.reason }}
-                        {% if form.reason.errors %}
-                            <div class="text-danger">{{ form.reason.errors }}</div>
-                        {% endif %}
-                        {% if form.reason.help_text %}
-                            <small class="form-text text-muted">{{ form.reason.help_text }}</small>
-                        {% endif %}
-                    </div>
-                    
-                    <!-- Supporting Document -->
-                    <div class="mb-3">
-                        <label for="{{ form.supporting_document.id_for_label }}" class="form-label">
-                            {{ form.supporting_document.label }}
-                        </label>
-                        {{ form.supporting_document }}
-                        {% if form.supporting_document.errors %}
-                            <div class="text-danger">{{ form.supporting_document.errors }}</div>
-                        {% endif %}
-                        {% if form.supporting_document.help_text %}
-                            <small class="form-text text-muted">{{ form.supporting_document.help_text }}</small>
-                        {% endif %}
-                    </div>
-                    
-                    <!-- Buttons -->
-                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                        <a href="{% url 'leaves:dashboard' %}" class="btn btn-secondary">
-                            <i class="bi bi-x-circle"></i> Cancel
-                        </a>
-                        <button type="submit" class="btn btn-primary">
-                            <i class="bi bi-check-circle"></i> Submit Application
-                        </button>
-                    </div>
-                </form>
-            </div>
+                <div class="text-end">
+                    <button type="submit" class="btn btn-success">
+                        Submit Application
+                    </button>
+                </div>
+
+            </form>
+
         </div>
     </div>
 </div>
