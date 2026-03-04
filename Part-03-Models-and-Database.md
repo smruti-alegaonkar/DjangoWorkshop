@@ -70,27 +70,32 @@ We'll extend this with additional faculty-specific information.
 
 Open `leaves/models.py` and replace its contents:
 
-```python
+```
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator
 from django.utils import timezone
+from decimal import Decimal
 
-# Create your models here.
 
 class FacultyProfile(models.Model):
     """
     Extended profile for faculty members
     Linked to Django's built-in User model
     """
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='faculty_profile')
+    user = models.OneToOneField(
+    User,
+    on_delete=models.CASCADE,
+    related_name='faculty_profile'
+    )
     employee_id = models.CharField(max_length=20, unique=True)
     department = models.CharField(max_length=100)
     designation = models.CharField(max_length=100)
     phone_number = models.CharField(max_length=15, blank=True)
     date_of_joining = models.DateField()
     profile_picture = models.ImageField(upload_to='profile_pics/', blank=True, null=True)
-    
+    email_notifications = models.BooleanField(default=True, help_text="Receive email notifications")
+
     def __str__(self):
         return f"{self.user.get_full_name()} ({self.employee_id})"
     
@@ -174,15 +179,14 @@ class LeaveRequest(models.Model):
         """Override save to calculate number of days"""
         if self.start_date and self.end_date:
             delta = self.end_date - self.start_date
-            self.number_of_days = delta.days + 1  # Include both start and end dates
+            self.number_of_days = Decimal(delta.days + 1)
         super().save(*args, **kwargs)
-    
+        
     class Meta:
         verbose_name = "Leave Request"
         verbose_name_plural = "Leave Requests"
         ordering = ['-applied_on']
         get_latest_by = 'applied_on'
-```
 
 ## Understanding the Models
 
