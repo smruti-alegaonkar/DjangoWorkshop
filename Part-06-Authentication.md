@@ -63,7 +63,7 @@ Add to `leaves/views.py`:
 
 ```python
 from django.contrib.auth import login
-from .forms import FacultyRegistrationForm
+from .forms import FacultyRegistrationForm, ProfileUpdateForm
 from .models import FacultyProfile, LeaveBalance, LeaveType
 
 def register(request):
