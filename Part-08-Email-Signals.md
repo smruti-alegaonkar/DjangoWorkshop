@@ -286,28 +286,6 @@ Run the command:
 python manage.py send_test_email your-email@example.com
 ```
 
-## Step 7: Custom Signals (Advanced)
-
-Create custom signals in `leaves/signals.py`:
-
-```python
-from django.dispatch import Signal
-
-# Custom signals
-leave_approved = Signal()  # providing_args=['leave_request', 'approved_by']
-leave_rejected = Signal()  # providing_args=['leave_request', 'rejected_by']
-
-# In your view:
-from .signals import leave_approved, leave_rejected
-
-def review_leave(request, leave_id):
-    # ... your code ...
-    
-    if leave.status == 'approved':
-        leave_approved.send(sender=LeaveRequest, leave_request=leave, approved_by=request.user)
-    elif leave.status == 'rejected':
-        leave_rejected.send(sender=LeaveRequest, leave_request=leave, rejected_by=request.user)
-```
 
 ## Email Templates Example
 
