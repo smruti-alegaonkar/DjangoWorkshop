@@ -242,17 +242,6 @@ class FacultyProfile(models.Model):
         return f"{self.user.get_full_name()} ({self.employee_id})"
 ```
 
-Update signals to check preferences:
-
-```python
-def send_leave_decision_email(leave_request):
-    """Notify faculty - respect preferences"""
-    if not leave_request.faculty.email_notifications:
-        return  # User opted out
-    
-    # ... rest of email code ...
-```
-
 ## Step 6: Add Management Command for Testing
 
 Create `leaves/management/commands/send_test_email.py`:
