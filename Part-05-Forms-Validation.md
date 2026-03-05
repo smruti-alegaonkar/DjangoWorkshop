@@ -392,15 +392,11 @@ forms.FileInput(attrs={'accept': '.pdf,.jpg'})
 
 ## Step 2: Create Leave Application View
 
-Update `leaves/views.py`:
+Update `leaves/views.py` by adding this code:
 
 ```python
-from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth.decorators import login_required
-from django.contrib import messages
-from .models import LeaveRequest, LeaveBalance, FacultyProfile
+
 from .forms import LeaveRequestForm, LeaveReviewForm
-from datetime import datetime
 
 @login_required
 def apply_leave(request):
