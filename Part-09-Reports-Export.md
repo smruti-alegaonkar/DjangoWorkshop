@@ -28,19 +28,6 @@ import io
 from django.contrib.auth.views import LoginView
 from django.urls import reverse_lazy
 
-
-class CustomLoginView(LoginView):
-    template_name = "registration/login.html"
-    redirect_authenticated_user = True
-
-    def get_success_url(self):
-        user = self.request.user
-
-        if user.is_superuser:
-            return reverse_lazy('leaves:reports')
-
-        return reverse_lazy('leaves:dashboard')
-
 @login_required
 def reports(request):
 
