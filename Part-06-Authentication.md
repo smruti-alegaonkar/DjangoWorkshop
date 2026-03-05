@@ -51,7 +51,6 @@ Add to `leave_management_system/settings.py`:
 ```python
 # Authentication
 LOGIN_URL = 'login'
-LOGIN_REDIRECT_URL = 'leaves:dashboard'
 LOGOUT_REDIRECT_URL = 'leaves:home'
 
 # Email backend for development (prints to console)
@@ -63,12 +62,9 @@ EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 Add to `leaves/views.py`:
 
 ```python
-from django.shortcuts import render, redirect
-from django.contrib import messages
 from django.contrib.auth import login
 from .forms import FacultyRegistrationForm
 from .models import FacultyProfile, LeaveBalance, LeaveType
-from datetime import datetime
 
 def register(request):
     if request.method == 'POST':
