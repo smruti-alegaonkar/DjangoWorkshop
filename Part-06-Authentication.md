@@ -37,7 +37,7 @@ urlpatterns = [
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 ```
-Add leaves/templates/registration/password_reset.html
+Create leaves/templates/registration/password_reset.html
 
 ```
 <!DOCTYPE html>
@@ -63,7 +63,7 @@ Add leaves/templates/registration/password_reset.html
 </html>
 ```
 
-Add leaves/templates/registration/password_reset_done.html
+Create leaves/templates/registration/password_reset_done.html
 
 ```
 <!DOCTYPE html>
