@@ -37,6 +37,53 @@ urlpatterns = [
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 ```
+Add leaves/templates/registration/password_reset.html
+
+```
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Password Reset</title>
+</head>
+
+<body>
+
+<h2>Password Reset</h2>
+
+<p>Enter your registered email to receive a reset link.</p>
+
+<form method="POST">
+    {% csrf_token %}
+    {{ form.as_p }}
+
+    <button type="submit">Send Reset Link</button>
+</form>
+
+</body>
+</html>
+```
+
+Add leaves/templates/registration/password_reset_done.html
+
+```
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Password Reset Sent</title>
+</head>
+
+<body>
+
+<h2>Reset Link Sent</h2>
+
+<p>
+Check the terminal running the Django server.
+The password reset link will appear there.
+</p>
+
+</body>
+</html>
+```
 
 ## Step 2: Configure Settings
 
