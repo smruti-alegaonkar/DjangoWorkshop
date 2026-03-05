@@ -16,18 +16,9 @@ pip install openpyxl   # For Excel export
 Add to `leaves/views.py`:
 
 ```python
-from django.contrib.auth.decorators import login_required, user_passes_test
-from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib import messages
-from django.utils import timezone
-from .models import LeaveRequest, LeaveBalance, FacultyProfile
-from .forms import LeaveReviewForm, LeaveRequestForm
 from django.http import HttpResponse
-from django.utils import timezone
 import csv
 from datetime import datetime, timedelta
-from django.contrib.auth import login
-from .forms import FacultyRegistrationForm
 from django.db.models import Count, Q, Sum
 from django.db import models
 import json
@@ -36,7 +27,7 @@ from reportlab.pdfgen import canvas
 import io
 from django.contrib.auth.views import LoginView
 from django.urls import reverse_lazy
-from .forms import ProfileUpdateForm
+
 
 class CustomLoginView(LoginView):
     template_name = "leaves/login.html"
