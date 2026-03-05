@@ -45,7 +45,8 @@ Add to `leave_management_system/settings.py`:
 ```python
 # Authentication
 LOGIN_URL = 'login'
-LOGOUT_REDIRECT_URL = 'leaves:home'
+LOGIN_REDIRECT_URL = 'leaves:dashboard'
+LOGOUT_REDIRECT_URL = 'leaves:login'
 
 # Email backend for development (prints to console)
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
